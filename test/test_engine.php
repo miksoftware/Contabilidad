@@ -670,4 +670,90 @@ function formatResults($successes, $issues) {
     
     return $output;
 }
+
+// Funciones adicionales para diagnóstico de hosting
+function checkHostingCompatibility() {
+    $issues = [];
+    $status = 'success';
+    
+    // Verificar versión PHP
+    if (version_compare(phpversion(), '7.4', '<')) {
+        $issues[] = 'PHP versión muy antigua: ' . phpversion();
+        $status = 'error';
+    }
+    
+    // Verificar extensiones
+    $required_extensions = ['pdo', 'pdo_mysql', 'json', 'session'];
+    foreach ($required_extensions as $ext) {
+        if (!extension_loaded($ext)) {
+            $issues[] = "Extensión $ext no disponible";
+            $status = 'error';
+        }
+    }
+    
+    // Verificar archivos críticos
+    $critical_files = ['config/database.php', 'dashboard.php', 'login.php'];
+    foreach ($critical_files as $file) {
+        if (!file_exists($file)) {
+            $issues[] = "Archivo crítico faltante: $file";
+            $status = 'error';
+        }
+    }
+    
+    return empty($issues) ? 'success' : $status;
+}
+
+function checkDashboardFunctionality() {
+    global $db;
+    
+    try {
+        // Verificar conexión a BD
+        $db->getConnection();
+        
+        // Verificar archivos del dashboard
+        if (!file_exists('dashboard.php')) {
+            return 'error';
+        }
+        
+        if (!file_exists('obtener_cuentas_usuario.php')) {
+            return 'warning';
+        }
+        
+        // Verificar tablas principales
+        $tables = ['usuarios', 'cuentas', 'transacciones', 'categorias'];
+        foreach ($tables as $table) {
+            $result = $db->query("SHOW TABLES LIKE '$table'");
+            if (!$result->fetch()) {
+                return 'error';
+            }
+        }
+        
+        return 'success';
+    } catch (Exception $e) {
+        return 'error';
+    }
+}
+
+function checkTransferSystem() {
+    $issues = [];
+    
+    // Verificar archivo de transferencias
+    if (!file_exists('transferencias.php')) {
+        $issues[] = 'Archivo transferencias.php faltante';
+    }
+    
+    // Verificar archivo de API
+    if (!file_exists('obtener_cuentas_usuario.php')) {
+        $issues[] = 'Archivo obtener_cuentas_usuario.php faltante';
+    }
+    
+    // Verificar permisos
+    if (file_exists('transferencias.php')) {
+        if (!is_readable('transferencias.php')) {
+            $issues[] = 'transferencias.php no es legible';
+        }
+    }
+    
+    return empty($issues) ? 'success' : 'warning';
+}
 ?>

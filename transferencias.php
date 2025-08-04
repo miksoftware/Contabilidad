@@ -1,9 +1,9 @@
 <?php
 session_start();
 
-// Solo administradores pueden acceder
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'admin') {
-    header('Location: dashboard.php');
+// Verificar si el usuario está logueado
+if (!isset($_SESSION['user_id'])) {
+    header('Location: login.php');
     exit();
 }
 
@@ -178,15 +178,22 @@ include 'includes/header.php';
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link active" href="transferencias.php">
+                            <i class="fas fa-arrows-alt-h me-2"></i>Transferencias
+                        </a>
+                    </li>
+                    <?php if ($_SESSION['user_role'] === 'admin'): ?>
+                    <li class="nav-item">
                         <a class="nav-link" href="usuarios.php">
                             <i class="fas fa-users me-2"></i>Usuarios
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link active" href="transferencias.php">
-                            <i class="fas fa-exchange-alt me-2"></i>Transferencias
+                        <a class="nav-link" href="diagnostico.php">
+                            <i class="fas fa-stethoscope me-2"></i>Diagnóstico
                         </a>
                     </li>
+                    <?php endif; ?>
                 </ul>
             </div>
         </nav>
