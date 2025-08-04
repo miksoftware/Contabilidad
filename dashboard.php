@@ -135,12 +135,6 @@ include 'includes/header.php';
                             Usuarios
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="diagnostico.php">
-                            <i class="fas fa-stethoscope me-2"></i>
-                            Diagnóstico
-                        </a>
-                    </li>
                     <?php endif; ?>
                 </ul>
             </div>

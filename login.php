@@ -21,8 +21,8 @@ if ($_POST) {
             
             // Construir consulta basada en columnas disponibles
             $select_fields = ['id', 'nombre', 'email', 'password'];
-            if (in_array('rol', $campos_disponibles)) {
-                $select_fields[] = 'rol';
+            if (in_array('role', $campos_disponibles)) {
+                $select_fields[] = 'role';
             }
             if (in_array('activo', $campos_disponibles)) {
                 $select_fields[] = 'activo';
@@ -41,7 +41,7 @@ if ($_POST) {
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['user_name'] = $user['nombre'];
                 $_SESSION['user_email'] = $user['email'];
-                $_SESSION['user_role'] = $user['rol'] ?? 'usuario'; // Default si no existe la columna
+                $_SESSION['user_role'] = $user['role'] ?? 'usuario'; // Default si no existe la columna
                 
                 error_log("Login exitoso para usuario ID: " . $user['id']);
                 header('Location: dashboard.php');
@@ -78,7 +78,7 @@ if ($_POST) {
             }
         } catch (Exception $e) {
             error_log("Error en login: " . $e->getMessage());
-            $error = 'Error en el servidor: ' . $e->getMessage() . ' - <a href="corregir_tabla_usuarios.php">Corregir tabla usuarios</a>';
+            $error = 'Error en el servidor: ' . $e->getMessage();
         }
     }
 }
@@ -158,21 +158,10 @@ include 'includes/header.php';
                     <div class="text-center">
                         <small class="text-muted">
                             <strong>Usuarios de prueba:</strong><br>
-                            📧 admin@test.com | 🔑 123456<br>
-                            📧 admin@contabilidad.local | 🔑 admin123<br>
-                            📧 usuario@contabilidad.local | 🔑 usuario123
+                            📧 admin@contabilidad.local | 🔑 123456<br>
+                            📧 usuario@contabilidad.local | 🔑 123456
                         </small>
                     </div>
-                    
-                    <?php if ($error): ?>
-                    <div class="mt-3 text-center">
-                        <small>
-                            <a href="diagnostico_login.php" class="text-warning">
-                                🔧 Diagnosticar problemas de login
-                            </a>
-                        </small>
-                    </div>
-                    <?php endif; ?>
                 </div>
             </div>
         </div>

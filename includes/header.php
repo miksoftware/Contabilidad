@@ -265,11 +265,6 @@
                         </a>
                     </li>
                     <?php endif; ?>
-                    <li class="nav-item">
-                        <a class="nav-link" href="diagnostico.php">
-                            <i class="fas fa-stethoscope me-2"></i>Diagnóstico
-                        </a>
-                    </li>
                     <li><hr class="dropdown-divider text-light"></li>
                 </ul>
                 

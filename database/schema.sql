@@ -100,10 +100,10 @@ CREATE TABLE presupuestos_pagos (
     UNIQUE KEY unique_pago (item_id, mes_año)
 );
 
--- Insertar usuarios por defecto (contraseñas: admin123 y usuario123)
+-- Insertar usuarios por defecto (contraseña para ambos: 123456)
 INSERT INTO usuarios (nombre, email, password, role) VALUES 
-('Administrador', 'admin@contabilidad.local', '$2y$10$rJHmJJlJ3bqJ.JhAXjNaYOqAF8Oc.uO7pKqVJhJZ8QfGjNbMjO6K6', 'admin'),
-('Usuario', 'usuario@contabilidad.local', '$2y$10$rJHmJJlJ3bqJ.JhAXjNaYOqAF8Oc.uO7pKqVJhJZ8QfGjNbMjO6K6', 'usuario');
+('Administrador', 'admin@contabilidad.local', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin'),
+('Usuario Ejemplo', 'usuario@contabilidad.local', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'usuario');
 
 -- Insertar categorías por defecto
 INSERT INTO categorias (nombre, tipo, color, icono) VALUES 
