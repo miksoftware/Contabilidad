@@ -45,7 +45,7 @@ if ($_POST) {
                 $passwordHash = password_hash($password, PASSWORD_DEFAULT);
                 
                 $db->query(
-                    "INSERT INTO usuarios (nombre, email, password, rol) VALUES (?, ?, ?, ?)",
+                    "INSERT INTO usuarios (nombre, email, password, role) VALUES (?, ?, ?, ?)",
                     [$nombre, $email, $passwordHash, $rol]
                 );
                 
@@ -79,12 +79,12 @@ if ($_POST) {
                     }
                     $passwordHash = password_hash($password, PASSWORD_DEFAULT);
                     $db->query(
-                        "UPDATE usuarios SET nombre = ?, email = ?, password = ?, rol = ? WHERE id = ?",
+                        "UPDATE usuarios SET nombre = ?, email = ?, password = ?, role = ? WHERE id = ?",
                         [$nombre, $email, $passwordHash, $rol, $id]
                     );
                 } else {
                     $db->query(
-                        "UPDATE usuarios SET nombre = ?, email = ?, rol = ? WHERE id = ?",
+                        "UPDATE usuarios SET nombre = ?, email = ?, role = ? WHERE id = ?",
                         [$nombre, $email, $rol, $id]
                     );
                 }
@@ -228,7 +228,7 @@ include 'includes/header.php';
                 <?php
                 $totalUsuarios = count($usuarios);
                 $usuariosActivos = count(array_filter($usuarios, fn($u) => $u['activo']));
-                $administradores = count(array_filter($usuarios, fn($u) => $u['rol'] === 'admin'));
+                $administradores = count(array_filter($usuarios, fn($u) => $u['role'] === 'admin'));
                 ?>
                 <div class="col-md-3">
                     <div class="card stats-card">
@@ -296,7 +296,7 @@ include 'includes/header.php';
                                         <td>
                                             <div class="d-flex align-items-center">
                                                 <div class="avatar me-2">
-                                                    <i class="fas fa-user-circle fa-2x text-<?php echo $usuario['rol'] === 'admin' ? 'primary' : 'secondary'; ?>"></i>
+                                                    <i class="fas fa-user-circle fa-2x text-<?php echo $usuario['role'] === 'admin' ? 'primary' : 'secondary'; ?>"></i>
                                                 </div>
                                                 <div>
                                                     <div class="fw-bold"><?php echo htmlspecialchars($usuario['nombre']); ?></div>
@@ -308,9 +308,9 @@ include 'includes/header.php';
                                         </td>
                                         <td><?php echo htmlspecialchars($usuario['email']); ?></td>
                                         <td>
-                                            <span class="badge bg-<?php echo $usuario['rol'] === 'admin' ? 'primary' : 'secondary'; ?>">
-                                                <i class="fas fa-<?php echo $usuario['rol'] === 'admin' ? 'user-shield' : 'user'; ?> me-1"></i>
-                                                <?php echo ucfirst($usuario['rol']); ?>
+                                            <span class="badge bg-<?php echo $usuario['role'] === 'admin' ? 'primary' : 'secondary'; ?>">
+                                                <i class="fas fa-<?php echo $usuario['role'] === 'admin' ? 'user-shield' : 'user'; ?> me-1"></i>
+                                                <?php echo ucfirst($usuario['role']); ?>
                                             </span>
                                         </td>
                                         <td>
@@ -442,7 +442,7 @@ function editarUsuario(usuario) {
     document.getElementById('usuarioId').value = usuario.id;
     document.getElementById('nombre').value = usuario.nombre;
     document.getElementById('email').value = usuario.email;
-    document.getElementById('rol').value = usuario.rol;
+    document.getElementById('rol').value = usuario.role;
     
     // Hacer contraseña opcional en edición
     const passwordField = document.getElementById('password');

@@ -11,10 +11,7 @@ if ($_POST) {
     if (empty($email) || empty($password)) {
         $error = 'Por favor, completa todos los campos.';
     } else {
-        try {
-            // Log del intento de login
-            error_log("Intento de login para: $email");
-            
+        try {            
             // Verificar primero qué columnas existen en la tabla usuarios
             $estructura = $db->fetchAll("DESCRIBE usuarios");
             $campos_disponibles = array_column($estructura, 'Field');
@@ -43,13 +40,11 @@ if ($_POST) {
                 $_SESSION['user_email'] = $user['email'];
                 $_SESSION['user_role'] = $user['role'] ?? 'usuario'; // Default si no existe la columna
                 
-                error_log("Login exitoso para usuario ID: " . $user['id']);
                 header('Location: dashboard.php');
                 exit();
             } else {
                 // Información de depuración mejorada
                 if (!$user) {
-                    error_log("Usuario no encontrado o inactivo: $email");
                     
                     // Verificar si el usuario existe pero está inactivo (solo si la columna activo existe)
                     if (in_array('activo', $campos_disponibles)) {
@@ -69,15 +64,10 @@ if ($_POST) {
                         }
                     }
                 } else {
-                    error_log("Contraseña incorrecta para: $email");
                     $error = 'Contraseña incorrecta para: ' . $email;
                 }
-                
-                // Para producción, descomentar esta línea y comentar las anteriores:
-                // $error = 'Credenciales incorrectas.';
             }
         } catch (Exception $e) {
-            error_log("Error en login: " . $e->getMessage());
             $error = 'Error en el servidor: ' . $e->getMessage();
         }
     }
@@ -158,8 +148,8 @@ include 'includes/header.php';
                     <div class="text-center">
                         <small class="text-muted">
                             <strong>Usuarios de prueba:</strong><br>
-                            📧 admin@contabilidad.local | 🔑 123456<br>
-                            📧 usuario@contabilidad.local | 🔑 123456
+                            📧 admin@contabilidad.local | 🔑 123daniels<br>
+                            📧 usuario@contabilidad.local | 🔑 123daniels
                         </small>
                     </div>
                 </div>

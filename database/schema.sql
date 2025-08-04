@@ -102,8 +102,8 @@ CREATE TABLE presupuestos_pagos (
 
 -- Insertar usuarios por defecto (contraseña para ambos: 123456)
 INSERT INTO usuarios (nombre, email, password, role) VALUES 
-('Administrador', 'admin@contabilidad.local', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin'),
-('Usuario Ejemplo', 'usuario@contabilidad.local', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'usuario');
+('Administrador', 'admin@contabilidad.local', '$2y$10$mk94P3prR0LD5VT4/VHOYeBq6IvQJNL9.kPT3StCj37C.XcxfmThK', 'admin'),
+('Usuario Ejemplo', 'usuario@contabilidad.local', '$2y$10$mk94P3prR0LD5VT4/VHOYeBq6IvQJNL9.kPT3StCj37C.XcxfmThK', 'usuario');
 
 -- Insertar categorías por defecto
 INSERT INTO categorias (nombre, tipo, color, icono) VALUES 

@@ -1,74 +1,126 @@
 <?php
 session_start();
 
+// Configurar manejo de errores para producción
+error_reporting(E_ALL);
+ini_set('display_errors', 0); // Ocultar errores en producción
+ini_set('log_errors', 1);
+
 // Verificar si el usuario está logueado
 if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
     exit();
 }
 
-require_once 'config/database.php';
+try {
+    require_once 'config/database.php';
+} catch (Exception $e) {
+    error_log("Error al conectar BD en dashboard: " . $e->getMessage());
+    die("Error de conexión. Contacte al administrador.");
+}
 
-// Obtener estadísticas del mes actual
+// Obtener estadísticas del mes actual con manejo de errores
 $mesActual = date('Y-m');
 $añoActual = date('Y');
 
-// Ingresos del mes
-$ingresosMes = $db->fetch(
-    "SELECT COALESCE(SUM(cantidad), 0) as total FROM transacciones 
-     WHERE tipo = 'ingreso' AND DATE_FORMAT(fecha, '%Y-%m') = ?",
-    [$mesActual]
-)['total'];
+try {
+    // Ingresos del mes
+    $ingresosMes = $db->fetch(
+        "SELECT COALESCE(SUM(cantidad), 0) as total FROM transacciones 
+         WHERE tipo = 'ingreso' AND DATE_FORMAT(fecha, '%Y-%m') = ?",
+        [$mesActual]
+    );
+    $ingresosMes = $ingresosMes ? $ingresosMes['total'] : 0;
+} catch (Exception $e) {
+    error_log("Error consultando ingresos: " . $e->getMessage());
+    $ingresosMes = 0;
+}
 
-// Gastos del mes
-$gastosMes = $db->fetch(
-    "SELECT COALESCE(SUM(cantidad), 0) as total FROM transacciones 
-     WHERE tipo = 'gasto' AND DATE_FORMAT(fecha, '%Y-%m') = ?",
-    [$mesActual]
-)['total'];
+try {
+    // Gastos del mes
+    $gastosMes = $db->fetch(
+        "SELECT COALESCE(SUM(cantidad), 0) as total FROM transacciones 
+         WHERE tipo = 'gasto' AND DATE_FORMAT(fecha, '%Y-%m') = ?",
+        [$mesActual]
+    );
+    $gastosMes = $gastosMes ? $gastosMes['total'] : 0;
+} catch (Exception $e) {
+    error_log("Error consultando gastos: " . $e->getMessage());
+    $gastosMes = 0;
+}
 
 // Balance del mes
 $balanceMes = $ingresosMes - $gastosMes;
 
-// Saldo total de todas las cuentas
-$saldoTotal = $db->fetch(
-    "SELECT COALESCE(SUM(saldo_actual), 0) as total FROM cuentas WHERE activa = 1"
-)['total'];
+try {
+    // Saldo total de todas las cuentas
+    $saldoTotal = $db->fetch(
+        "SELECT COALESCE(SUM(saldo_actual), 0) as total FROM cuentas WHERE activa = 1"
+    );
+    $saldoTotal = $saldoTotal ? $saldoTotal['total'] : 0;
+} catch (Exception $e) {
+    error_log("Error consultando saldo total: " . $e->getMessage());
+    $saldoTotal = 0;
+}
 
-// Últimas transacciones
-$ultimasTransacciones = $db->fetchAll(
-    "SELECT t.*, c.nombre as categoria, cu.nombre as cuenta, u.nombre as usuario
-     FROM transacciones t
-     JOIN categorias c ON t.categoria_id = c.id
-     JOIN cuentas cu ON t.cuenta_id = cu.id
-     JOIN usuarios u ON t.usuario_id = u.id
-     ORDER BY t.created_at DESC
-     LIMIT 10"
-);
+try {
+    // Últimas transacciones
+    $ultimasTransacciones = $db->fetchAll(
+        "SELECT t.*, c.nombre as categoria, cu.nombre as cuenta, u.nombre as usuario
+         FROM transacciones t
+         JOIN categorias c ON t.categoria_id = c.id
+         JOIN cuentas cu ON t.cuenta_id = cu.id
+         JOIN usuarios u ON t.usuario_id = u.id
+         ORDER BY t.created_at DESC
+         LIMIT 10"
+    );
+    if (!$ultimasTransacciones) {
+        $ultimasTransacciones = [];
+    }
+} catch (Exception $e) {
+    error_log("Error consultando últimas transacciones: " . $e->getMessage());
+    $ultimasTransacciones = [];
+}
 
-// Gastos por categoría (mes actual)
-$gastosPorCategoria = $db->fetchAll(
-    "SELECT c.nombre, c.color, COALESCE(SUM(t.cantidad), 0) as total
-     FROM categorias c
-     LEFT JOIN transacciones t ON c.id = t.categoria_id 
-         AND t.tipo = 'gasto' 
-         AND DATE_FORMAT(t.fecha, '%Y-%m') = ?
-     WHERE c.tipo = 'gasto' AND c.activa = 1
-     GROUP BY c.id, c.nombre, c.color
-     HAVING total > 0
-     ORDER BY total DESC",
-    [$mesActual]
-);
+try {
+    // Gastos por categoría (mes actual)
+    $gastosPorCategoria = $db->fetchAll(
+        "SELECT c.nombre, c.color, COALESCE(SUM(t.cantidad), 0) as total
+         FROM categorias c
+         LEFT JOIN transacciones t ON c.id = t.categoria_id 
+             AND t.tipo = 'gasto' 
+             AND DATE_FORMAT(t.fecha, '%Y-%m') = ?
+         WHERE c.tipo = 'gasto' AND c.activa = 1
+         GROUP BY c.id, c.nombre, c.color
+         HAVING total > 0
+         ORDER BY total DESC",
+        [$mesActual]
+    );
+    if (!$gastosPorCategoria) {
+        $gastosPorCategoria = [];
+    }
+} catch (Exception $e) {
+    error_log("Error consultando gastos por categoría: " . $e->getMessage());
+    $gastosPorCategoria = [];
+}
 
-// Metas de ahorro
-$metasAhorro = $db->fetchAll(
-    "SELECT *, 
-     ROUND((cantidad_actual / cantidad_objetivo) * 100, 2) as progreso
-     FROM metas_ahorro 
-     WHERE completada = 0
-     ORDER BY fecha_objetivo ASC
-     LIMIT 5"
-);
+try {
+    // Metas de ahorro
+    $metasAhorro = $db->fetchAll(
+        "SELECT *, 
+         ROUND((cantidad_actual / cantidad_objetivo) * 100, 2) as progreso
+         FROM metas_ahorro 
+         WHERE completada = 0
+         ORDER BY fecha_objetivo ASC
+         LIMIT 5"
+    );
+    if (!$metasAhorro) {
+        $metasAhorro = [];
+    }
+} catch (Exception $e) {
+    error_log("Error consultando metas de ahorro: " . $e->getMessage());
+    $metasAhorro = [];
+}
 
 $titulo = 'Dashboard - Contabilidad Familiar';
 include 'includes/header.php';
@@ -426,6 +478,11 @@ document.getElementById('nuevaTransaccionModal').addEventListener('show.bs.modal
         .then(response => response.text())
         .then(html => {
             document.querySelector('#nuevaTransaccionModal .modal-body').innerHTML = html;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.querySelector('#nuevaTransaccionModal .modal-body').innerHTML = 
+                '<div class="alert alert-danger">Error al cargar el formulario. Inténtalo de nuevo.</div>';
         });
 });
 </script>
