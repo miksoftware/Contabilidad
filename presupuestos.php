@@ -14,6 +14,8 @@ $titulo = 'Presupuestos';
 // Procesar acciones CRUD
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
+    // Evitar comparaciones de strings en SQL para no mezclar collations
+    $isAdminFlag = isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin' ? 1 : 0;
     
     try {
         switch ($action) {
@@ -38,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'update':
                 $db->query(
                     "UPDATE presupuestos_items SET nombre = ?, categoria_id = ?, tipo = ?, monto = ?, fecha_vencimiento = ?, es_recurrente = ?, frecuencia = ? 
-                     WHERE id = ? AND (usuario_id = ? OR ? = 'admin')",
+                     WHERE id = ? AND (usuario_id = ? OR ? = 1)",
                     [
                         $_POST['nombre'],
                         $_POST['categoria_id'],
@@ -49,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $_POST['frecuencia'] ?? 'mensual',
                         $_POST['id'],
                         $_SESSION['user_id'],
-                        $_SESSION['user_role']
+                        $isAdminFlag
                     ]
                 );
                 $success = "Item de presupuesto actualizado exitosamente.";
@@ -57,8 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
             case 'delete':
                 $db->query(
-                    "DELETE FROM presupuestos_items WHERE id = ? AND (usuario_id = ? OR ? = 'admin')",
-                    [$_POST['id'], $_SESSION['user_id'], $_SESSION['user_role']]
+                    "DELETE FROM presupuestos_items WHERE id = ? AND (usuario_id = ? OR ? = 1)",
+                    [$_POST['id'], $_SESSION['user_id'], $isAdminFlag]
                 );
                 $success = "Item de presupuesto eliminado exitosamente.";
                 break;
@@ -66,8 +68,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'marcar_pagado':
                 // Crear transacción automática y marcar como pagado
                 $item = $db->fetch(
-                    "SELECT * FROM presupuestos_items WHERE id = ? AND (usuario_id = ? OR ? = 'admin')",
-                    [$_POST['id'], $_SESSION['user_id'], $_SESSION['user_role']]
+                    "SELECT * FROM presupuestos_items WHERE id = ? AND (usuario_id = ? OR ? = 1)",
+                    [$_POST['id'], $_SESSION['user_id'], $isAdminFlag]
                 );
                 
                 if ($item) {
@@ -113,20 +115,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Obtener items de presupuesto
-$whereClause = $_SESSION['user_role'] === 'admin' ? '' : 'WHERE p.usuario_id = ' . $_SESSION['user_id'];
-$presupuestos = $db->fetchAll(
-    "SELECT p.*, c.nombre as categoria, u.nombre as usuario, c.tipo as categoria_tipo,
-            CASE WHEN pago.fecha_pago IS NOT NULL THEN 1 ELSE 0 END as pagado_este_mes,
-            pago.fecha_pago, pago.monto_pagado
-     FROM presupuestos_items p
-     LEFT JOIN categorias c ON p.categoria_id = c.id
-     LEFT JOIN usuarios u ON p.usuario_id = u.id
-     LEFT JOIN presupuestos_pagos pago ON p.id = pago.item_id AND pago.mes_año = ?
-     $whereClause
-     ORDER BY p.tipo, p.fecha_vencimiento, p.nombre",
-    [date('Y-m')]
-);
+// Obtener items de presupuesto evitando concatenación con rol (previene problemas de collation)
+$isAdmin = isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin';
+if ($isAdmin) {
+    $presupuestos = $db->fetchAll(
+        "SELECT p.*, c.nombre as categoria, u.nombre as usuario, c.tipo as categoria_tipo,
+                CASE WHEN pago.fecha_pago IS NOT NULL THEN 1 ELSE 0 END as pagado_este_mes,
+                pago.fecha_pago, pago.monto_pagado
+         FROM presupuestos_items p
+         LEFT JOIN categorias c ON p.categoria_id = c.id
+         LEFT JOIN usuarios u ON p.usuario_id = u.id
+         LEFT JOIN presupuestos_pagos pago ON p.id = pago.item_id AND pago.mes_año = ?
+         ORDER BY p.tipo, p.fecha_vencimiento, p.nombre",
+        [date('Y-m')]
+    );
+} else {
+    $presupuestos = $db->fetchAll(
+        "SELECT p.*, c.nombre as categoria, u.nombre as usuario, c.tipo as categoria_tipo,
+                CASE WHEN pago.fecha_pago IS NOT NULL THEN 1 ELSE 0 END as pagado_este_mes,
+                pago.fecha_pago, pago.monto_pagado
+         FROM presupuestos_items p
+         LEFT JOIN categorias c ON p.categoria_id = c.id
+         LEFT JOIN usuarios u ON p.usuario_id = u.id
+         LEFT JOIN presupuestos_pagos pago ON p.id = pago.item_id AND pago.mes_año = ?
+         WHERE p.usuario_id = ?
+         ORDER BY p.tipo, p.fecha_vencimiento, p.nombre",
+        [date('Y-m'), $_SESSION['user_id']]
+    );
+}
 
 // Obtener categorías para el formulario
 $categorias = $db->fetchAll("SELECT * FROM categorias ORDER BY tipo, nombre");
@@ -138,18 +154,33 @@ $cuentas_usuario = $_SESSION['user_role'] === 'admin'
 
 // Estadísticas del mes actual
 $mes_actual = date('Y-m');
-$stats = $db->fetch(
-    "SELECT 
-        SUM(CASE WHEN p.tipo = 'gasto' THEN p.monto ELSE 0 END) as gastos_presupuestados,
-        SUM(CASE WHEN p.tipo = 'ingreso' THEN p.monto ELSE 0 END) as ingresos_presupuestados,
-        COUNT(CASE WHEN p.tipo = 'gasto' AND pago.fecha_pago IS NOT NULL THEN 1 END) as gastos_pagados,
-        COUNT(CASE WHEN p.tipo = 'gasto' THEN 1 END) as total_gastos,
-        SUM(CASE WHEN p.tipo = 'gasto' AND pago.fecha_pago IS NOT NULL THEN pago.monto_pagado ELSE 0 END) as monto_gastado
-     FROM presupuestos_items p
-     LEFT JOIN presupuestos_pagos pago ON p.id = pago.item_id AND pago.mes_año = ?
-     WHERE p.activo = 1 " . ($whereClause ? "AND p.usuario_id = " . $_SESSION['user_id'] : ""),
-    [$mes_actual]
-);
+if ($isAdmin) {
+    $stats = $db->fetch(
+        "SELECT 
+            SUM(CASE WHEN p.tipo = 'gasto' THEN p.monto ELSE 0 END) as gastos_presupuestados,
+            SUM(CASE WHEN p.tipo = 'ingreso' THEN p.monto ELSE 0 END) as ingresos_presupuestados,
+            COUNT(CASE WHEN p.tipo = 'gasto' AND pago.fecha_pago IS NOT NULL THEN 1 END) as gastos_pagados,
+            COUNT(CASE WHEN p.tipo = 'gasto' THEN 1 END) as total_gastos,
+            SUM(CASE WHEN p.tipo = 'gasto' AND pago.fecha_pago IS NOT NULL THEN pago.monto_pagado ELSE 0 END) as monto_gastado
+         FROM presupuestos_items p
+         LEFT JOIN presupuestos_pagos pago ON p.id = pago.item_id AND pago.mes_año = ?
+         WHERE p.activo = 1",
+        [$mes_actual]
+    );
+} else {
+    $stats = $db->fetch(
+        "SELECT 
+            SUM(CASE WHEN p.tipo = 'gasto' THEN p.monto ELSE 0 END) as gastos_presupuestados,
+            SUM(CASE WHEN p.tipo = 'ingreso' THEN p.monto ELSE 0 END) as ingresos_presupuestados,
+            COUNT(CASE WHEN p.tipo = 'gasto' AND pago.fecha_pago IS NOT NULL THEN 1 END) as gastos_pagados,
+            COUNT(CASE WHEN p.tipo = 'gasto' THEN 1 END) as total_gastos,
+            SUM(CASE WHEN p.tipo = 'gasto' AND pago.fecha_pago IS NOT NULL THEN pago.monto_pagado ELSE 0 END) as monto_gastado
+         FROM presupuestos_items p
+         LEFT JOIN presupuestos_pagos pago ON p.id = pago.item_id AND pago.mes_año = ?
+         WHERE p.activo = 1 AND p.usuario_id = ?",
+        [$mes_actual, $_SESSION['user_id']]
+    );
+}
 
 require_once 'includes/header.php';
 ?>

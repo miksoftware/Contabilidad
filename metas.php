@@ -57,23 +57,79 @@ if ($_POST) {
             case 'agregar_dinero':
                 $id = intval($_POST['id']);
                 $cantidad = floatval($_POST['cantidad']);
-                
+                $cuenta_id = isset($_POST['cuenta_id']) ? intval($_POST['cuenta_id']) : 0;
+
                 if ($cantidad <= 0) {
                     throw new Exception('La cantidad debe ser mayor a 0');
                 }
-                
-                $db->query(
-                    "UPDATE metas_ahorro SET cantidad_actual = cantidad_actual + ? WHERE id = ?",
-                    [$cantidad, $id]
+                if ($cuenta_id <= 0) {
+                    throw new Exception('Selecciona la cuenta de donde saldrá el dinero');
+                }
+
+                // Validar cuenta pertenece al usuario (o es compartida) y que tenga saldo suficiente
+                $cuenta = $db->fetch(
+                    "SELECT id, nombre, saldo_actual FROM cuentas WHERE id = ? AND activa = 1 AND (usuario_id = ? OR usuario_id IS NULL)",
+                    [$cuenta_id, $_SESSION['user_id']]
                 );
-                
-                // Verificar si se completó la meta
+                if (!$cuenta) {
+                    throw new Exception('Cuenta inválida o no autorizada');
+                }
+                if ($cuenta['saldo_actual'] < $cantidad) {
+                    throw new Exception('Saldo insuficiente en la cuenta seleccionada');
+                }
+
+                // Obtener meta para descripción y validar existencia
                 $meta = $db->fetch("SELECT * FROM metas_ahorro WHERE id = ?", [$id]);
-                if ($meta['cantidad_actual'] >= $meta['cantidad_objetivo']) {
-                    $db->query("UPDATE metas_ahorro SET completada = 1 WHERE id = ?", [$id]);
-                    $mensaje = '¡Felicidades! Meta completada exitosamente';
-                } else {
-                    $mensaje = 'Dinero agregado a la meta exitosamente';
+                if (!$meta) {
+                    throw new Exception('Meta no encontrada');
+                }
+
+                // Buscar categoría "Otros Gastos"; si no existe, tomar la primera de gasto
+                $cat = $db->fetch("SELECT id FROM categorias WHERE tipo = 'gasto' AND nombre = 'Otros Gastos' LIMIT 1");
+                if (!$cat) {
+                    $cat = $db->fetch("SELECT id FROM categorias WHERE tipo = 'gasto' ORDER BY id LIMIT 1");
+                }
+                if (!$cat) {
+                    throw new Exception('No hay categorías de gasto configuradas');
+                }
+
+                // Registrar todo en una transacción
+                $db->getConnection()->beginTransaction();
+                try {
+                    // 1) Insertar transacción de gasto
+                    $descripcion = 'Abono a meta de ahorro: ' . $meta['nombre'];
+                    $db->query(
+                        "INSERT INTO transacciones (usuario_id, categoria_id, cuenta_id, tipo, cantidad, descripcion, fecha, created_at) VALUES (?, ?, ?, 'gasto', ?, ?, CURDATE(), NOW())",
+                        [$_SESSION['user_id'], $cat['id'], $cuenta_id, $cantidad, $descripcion]
+                    );
+
+                    // 2) Debitar cuenta
+                    $db->query(
+                        "UPDATE cuentas SET saldo_actual = saldo_actual - ? WHERE id = ?",
+                        [$cantidad, $cuenta_id]
+                    );
+
+                    // 3) Aumentar ahorro en la meta
+                    $db->query(
+                        "UPDATE metas_ahorro SET cantidad_actual = cantidad_actual + ? WHERE id = ?",
+                        [$cantidad, $id]
+                    );
+
+                    // 4) Verificar si se completó la meta
+                    $metaAct = $db->fetch("SELECT cantidad_actual, cantidad_objetivo FROM metas_ahorro WHERE id = ?", [$id]);
+                    if ($metaAct && $metaAct['cantidad_actual'] >= $metaAct['cantidad_objetivo']) {
+                        $db->query("UPDATE metas_ahorro SET completada = 1 WHERE id = ?", [$id]);
+                        $mensaje = '¡Felicidades! Meta completada exitosamente';
+                    } else {
+                        $mensaje = 'Dinero agregado a la meta exitosamente';
+                    }
+
+                    $db->getConnection()->commit();
+                } catch (Exception $ex) {
+                    if ($db->getConnection()->inTransaction()) {
+                        $db->getConnection()->rollBack();
+                    }
+                    throw $ex;
                 }
                 break;
                 
@@ -127,6 +183,12 @@ $metas = $db->fetchAll(
 
 $metasActivas = array_filter($metas, fn($m) => !$m['completada']);
 $metasCompletadas = array_filter($metas, fn($m) => $m['completada']);
+
+// Cuentas del usuario (y compartidas) para fondear metas
+$cuentas_usuario = $db->fetchAll(
+    "SELECT id, nombre, saldo_actual FROM cuentas WHERE activa = 1 AND (usuario_id = ? OR usuario_id IS NULL) ORDER BY nombre",
+    [$_SESSION['user_id']]
+);
 
 $titulo = 'Metas de Ahorro - Contabilidad Familiar';
 include 'includes/header.php';
@@ -483,6 +545,20 @@ include 'includes/header.php';
                 <input type="hidden" name="id" id="dineroMetaId">
                 
                 <div class="modal-body">
+                    <div class="mb-3" id="cuentaGroup">
+                        <label for="cuenta_id" class="form-label">Cuenta de origen</label>
+                        <select class="form-select" id="cuenta_id" name="cuenta_id">
+                            <option value="">Seleccionar cuenta</option>
+                            <?php foreach ($cuentas_usuario as $c): ?>
+                                <option value="<?php echo $c['id']; ?>">
+                                    <?php echo htmlspecialchars($c['nombre']); ?> (Saldo: $<?php echo number_format($c['saldo_actual'], 2); ?>)
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php if (empty($cuentas_usuario)): ?>
+                            <div class="form-text text-danger">No tienes cuentas activas para realizar el abono.</div>
+                        <?php endif; ?>
+                    </div>
                     <div class="mb-3">
                         <label for="cantidad" class="form-label">Cantidad</label>
                         <div class="input-group">
@@ -533,6 +609,17 @@ function gestionarDinero(id, accion) {
     document.getElementById('dineroModalTitle').textContent = accion === 'agregar' ? 'Agregar Dinero' : 'Retirar Dinero';
     document.getElementById('dineroSubmitBtn').textContent = accion === 'agregar' ? 'Agregar' : 'Retirar';
     document.getElementById('dineroSubmitBtn').className = 'btn btn-' + (accion === 'agregar' ? 'success' : 'warning');
+    // Mostrar selección de cuenta solo para agregar (abono)
+    const cuentaGroup = document.getElementById('cuentaGroup');
+    const cuentaSelect = document.getElementById('cuenta_id');
+    if (accion === 'agregar') {
+        cuentaGroup.style.display = '';
+        cuentaSelect.required = true;
+    } else {
+        cuentaGroup.style.display = 'none';
+        cuentaSelect.required = false;
+        cuentaSelect.value = '';
+    }
     
     new bootstrap.Modal(document.getElementById('gestionarDineroModal')).show();
 }

@@ -9,38 +9,29 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-$user_id = $_SESSION['user_id'];
+// Si llega usuario_id por GET, usar ese; si no, usar el de la sesión
+$requested_user_id = isset($_GET['usuario_id']) ? intval($_GET['usuario_id']) : intval($_SESSION['user_id']);
 
 try {
-    // Obtener las cuentas del usuario autenticado
-    $cuentas_result = $db->fetchAll("
-        SELECT 
-            c.id,
-            c.nombre,
-            c.saldo,
-            cat.nombre as categoria,
-            cat.color
-        FROM cuentas c 
-        LEFT JOIN categorias cat ON c.categoria_id = cat.id 
-        WHERE c.usuario_id = ? 
-        AND c.activa = 1
-        ORDER BY c.nombre ASC
-    ", [$user_id]);
-    
+    // Obtener las cuentas activas del usuario solicitado
+    $cuentas_result = $db->fetchAll(
+        "SELECT id, nombre, saldo_actual FROM cuentas WHERE activa = 1 AND (usuario_id = ? OR usuario_id IS NULL) ORDER BY nombre ASC",
+        [$requested_user_id]
+    );
+
     $cuentas = [];
     foreach ($cuentas_result as $row) {
         $cuentas[] = [
-            'id' => $row['id'],
+            'id' => (int)$row['id'],
             'nombre' => $row['nombre'],
-            'saldo' => floatval($row['saldo']),
-            'categoria' => $row['categoria'] ?? 'Sin categoría',
-            'color' => $row['color'] ?? '#6c757d'
+            'saldo_actual' => (float)$row['saldo_actual']
         ];
     }
-    
+
     header('Content-Type: application/json');
-    echo json_encode(['cuentas' => $cuentas]);
-    
+    // El frontend de transferencias.php espera un array plano
+    echo json_encode($cuentas);
+
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode(['error' => 'Error al obtener las cuentas: ' . $e->getMessage()]);

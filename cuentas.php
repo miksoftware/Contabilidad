@@ -28,8 +28,8 @@ if ($_POST) {
                 }
                 
                 $db->query(
-                    "INSERT INTO cuentas (nombre, tipo, saldo_inicial, saldo_actual, color) VALUES (?, ?, ?, ?, ?)",
-                    [$nombre, $tipo, $saldo_inicial, $saldo_inicial, $color]
+                    "INSERT INTO cuentas (nombre, tipo, usuario_id, saldo_inicial, saldo_actual, color) VALUES (?, ?, ?, ?, ?, ?)",
+                    [$nombre, $tipo, $_SESSION['user_id'], $saldo_inicial, $saldo_inicial, $color]
                 );
                 
                 $mensaje = 'Cuenta creada exitosamente';

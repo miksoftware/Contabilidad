@@ -16,6 +16,9 @@ class Database {
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES => false,
             ]);
+            // Forzar collation consistente para evitar conflictos en comparaciones
+            $this->connection->exec("SET NAMES 'utf8mb4' COLLATE 'utf8mb4_unicode_ci'");
+            $this->connection->exec("SET collation_connection = 'utf8mb4_unicode_ci'");
         } catch (PDOException $e) {
             die("Error de conexión: " . $e->getMessage());
         }

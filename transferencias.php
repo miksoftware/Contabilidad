@@ -15,7 +15,7 @@ $tipoMensaje = 'success';
 
 if ($_POST && isset($_POST['realizar_transferencia'])) {
     try {
-        $usuario_origen = intval($_POST['usuario_origen']);
+    $usuario_origen = intval($_POST['usuario_origen']);
         $cuenta_origen = intval($_POST['cuenta_origen']);
         $usuario_destino = intval($_POST['usuario_destino']);
         $cuenta_destino = intval($_POST['cuenta_destino']);
@@ -24,6 +24,11 @@ if ($_POST && isset($_POST['realizar_transferencia'])) {
         $categoria_gasto = intval($_POST['categoria_gasto']);
         $categoria_ingreso = intval($_POST['categoria_ingreso']);
         
+        // Validar que el usuario de origen sea el mismo que el de la sesión
+        if ($usuario_origen !== intval($_SESSION['user_id'])) {
+            throw new Exception('No autorizado: el usuario de origen debe ser el que inició sesión');
+        }
+
         if ($cantidad <= 0) {
             throw new Exception('La cantidad debe ser mayor a 0');
         }
@@ -38,8 +43,8 @@ if ($_POST && isset($_POST['realizar_transferencia'])) {
         
         // Verificar saldo suficiente en cuenta origen
         $cuentaOrigen = $db->fetch(
-            "SELECT saldo_actual FROM cuentas WHERE id = ?",
-            [$cuenta_origen]
+            "SELECT saldo_actual FROM cuentas WHERE id = ? AND usuario_id = ?",
+            [$cuenta_origen, $usuario_origen]
         );
         
         if (!$cuentaOrigen || $cuentaOrigen['saldo_actual'] < $cantidad) {
@@ -67,8 +72,8 @@ if ($_POST && isset($_POST['realizar_transferencia'])) {
         
         // Actualizar saldos
         $db->query(
-            "UPDATE cuentas SET saldo_actual = saldo_actual - ? WHERE id = ?",
-            [$cantidad, $cuenta_origen]
+            "UPDATE cuentas SET saldo_actual = saldo_actual - ? WHERE id = ? AND usuario_id = ?",
+            [$cantidad, $cuenta_origen, $usuario_origen]
         );
         
         $db->query(
@@ -120,7 +125,6 @@ $transferenciasRecientes = $db->fetchAll(
          AND ABS(TIMESTAMPDIFF(SECOND, t1.created_at, t2.created_at)) <= 5
          AND t1.tipo = 'gasto' 
          AND t2.tipo = 'ingreso'
-         AND t1.usuario_id != t2.usuario_id
      )
      JOIN usuarios u1 ON t1.usuario_id = u1.id
      JOIN usuarios u2 ON t2.usuario_id = u2.id
@@ -233,16 +237,18 @@ include 'includes/header.php';
                                         <i class="fas fa-minus-circle me-2"></i>Origen (Quien envía)
                                     </h6>
                                     <div class="row">
+                                        <?php 
+                                        // Solo el usuario autenticado como origen
+                                        $usuarioActual = $db->fetch("SELECT id, nombre FROM usuarios WHERE id = ?", [$_SESSION['user_id']]);
+                                        ?>
                                         <div class="col-md-6">
                                             <label class="form-label">Usuario</label>
-                                            <select name="usuario_origen" id="usuario_origen" class="form-select" required onchange="cargarCuentas('origen')">
-                                                <option value="">Seleccionar usuario</option>
-                                                <?php foreach ($usuarios as $usuario): ?>
-                                                    <option value="<?php echo $usuario['id']; ?>">
-                                                        <?php echo htmlspecialchars($usuario['nombre']); ?>
-                                                    </option>
-                                                <?php endforeach; ?>
+                                            <select name="usuario_origen" id="usuario_origen" class="form-select" required disabled>
+                                                <option value="<?php echo $usuarioActual['id']; ?>" selected>
+                                                    <?php echo htmlspecialchars($usuarioActual['nombre']); ?>
+                                                </option>
                                             </select>
+                                            <input type="hidden" name="usuario_origen" value="<?php echo $usuarioActual['id']; ?>">
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label">Cuenta</label>
@@ -409,17 +415,30 @@ async function cargarCuentas(tipo) {
     
     try {
         const response = await fetch(`obtener_cuentas_usuario.php?usuario_id=${usuarioId}`);
-        const cuentas = await response.json();
-        
+        const data = await response.json();
+
         cuentaSelect.innerHTML = '<option value="">Seleccionar cuenta</option>';
-        
+
+        if (!response.ok) {
+            const msg = (data && data.error) ? data.error : 'Error al cargar cuentas';
+            cuentaSelect.innerHTML = `<option value="">${msg}</option>`;
+            return;
+        }
+
+        const cuentas = Array.isArray(data) ? data : [];
+        if (cuentas.length === 0) {
+            cuentaSelect.innerHTML = '<option value="">Sin cuentas disponibles</option>';
+            return;
+        }
+
         cuentas.forEach(cuenta => {
             const option = document.createElement('option');
             option.value = cuenta.id;
-            option.textContent = `${cuenta.nombre} (Saldo: $${parseFloat(cuenta.saldo_actual).toLocaleString()})`;
+            const saldo = Number.parseFloat(cuenta.saldo_actual || 0).toLocaleString();
+            option.textContent = `${cuenta.nombre} (Saldo: $${saldo})`;
             cuentaSelect.appendChild(option);
         });
-        
+
     } catch (error) {
         console.error('Error al cargar cuentas:', error);
         cuentaSelect.innerHTML = '<option value="">Error al cargar cuentas</option>';
@@ -437,6 +456,14 @@ document.getElementById('transferenciaForm').addEventListener('submit', function
         e.preventDefault();
         alert('No puedes transferir a la misma cuenta.');
         return false;
+    }
+});
+
+// Cargar automáticamente las cuentas del usuario de origen al cargar la página
+document.addEventListener('DOMContentLoaded', function() {
+    const usuarioOrigenSelect = document.getElementById('usuario_origen');
+    if (usuarioOrigenSelect && usuarioOrigenSelect.value) {
+        cargarCuentas('origen');
     }
 });
 </script>
