@@ -136,22 +136,67 @@ if ($_POST) {
             case 'retirar_dinero':
                 $id = intval($_POST['id']);
                 $cantidad = floatval($_POST['cantidad']);
+                $cuenta_id = isset($_POST['cuenta_id']) ? intval($_POST['cuenta_id']) : 0;
                 
                 if ($cantidad <= 0) {
                     throw new Exception('La cantidad debe ser mayor a 0');
                 }
+                if ($cuenta_id <= 0) {
+                    throw new Exception('Selecciona la cuenta donde se depositará el dinero retirado');
+                }
                 
-                $meta = $db->fetch("SELECT cantidad_actual FROM metas_ahorro WHERE id = ?", [$id]);
+                $meta = $db->fetch("SELECT * FROM metas_ahorro WHERE id = ?", [$id]);
                 if ($cantidad > $meta['cantidad_actual']) {
                     throw new Exception('No puedes retirar más dinero del que tienes ahorrado');
                 }
-                
-                $db->query(
-                    "UPDATE metas_ahorro SET cantidad_actual = cantidad_actual - ?, completada = 0 WHERE id = ?",
-                    [$cantidad, $id]
+                // Validar cuenta destino pertenece al usuario (o compartida)
+                $cuentaDestino = $db->fetch(
+                    "SELECT id, nombre, saldo_actual FROM cuentas WHERE id = ? AND activa = 1 AND (usuario_id = ? OR usuario_id IS NULL)",
+                    [$cuenta_id, $_SESSION['user_id']]
                 );
-                
-                $mensaje = 'Dinero retirado de la meta exitosamente';
+                if (!$cuentaDestino) {
+                    throw new Exception('Cuenta destino inválida o no autorizada');
+                }
+
+                // Buscar categoría "Otros Ingresos"; si no existe, tomar la primera de ingreso
+                $catIng = $db->fetch("SELECT id FROM categorias WHERE tipo = 'ingreso' AND nombre = 'Otros Ingresos' LIMIT 1");
+                if (!$catIng) {
+                    $catIng = $db->fetch("SELECT id FROM categorias WHERE tipo = 'ingreso' ORDER BY id LIMIT 1");
+                }
+                if (!$catIng) {
+                    throw new Exception('No hay categorías de ingreso configuradas');
+                }
+
+                // Registrar todo en una transacción: crédito a cuenta, ingreso, y disminución de meta
+                $db->getConnection()->beginTransaction();
+                try {
+                    // 1) Insertar transacción de ingreso a la cuenta destino
+                    $descripcion = 'Retiro de meta de ahorro: ' . $meta['nombre'];
+                    $db->query(
+                        "INSERT INTO transacciones (usuario_id, categoria_id, cuenta_id, tipo, cantidad, descripcion, fecha, created_at) VALUES (?, ?, ?, 'ingreso', ?, ?, CURDATE(), NOW())",
+                        [$_SESSION['user_id'], $catIng['id'], $cuenta_id, $cantidad, $descripcion]
+                    );
+
+                    // 2) Acreditar cuenta destino
+                    $db->query(
+                        "UPDATE cuentas SET saldo_actual = saldo_actual + ? WHERE id = ?",
+                        [$cantidad, $cuenta_id]
+                    );
+
+                    // 3) Disminuir ahorro en la meta y asegurar que no esté marcada como completada
+                    $db->query(
+                        "UPDATE metas_ahorro SET cantidad_actual = cantidad_actual - ?, completada = 0 WHERE id = ?",
+                        [$cantidad, $id]
+                    );
+
+                    $db->getConnection()->commit();
+                    $mensaje = 'Dinero retirado de la meta y depositado en la cuenta seleccionada';
+                } catch (Exception $ex) {
+                    if ($db->getConnection()->inTransaction()) {
+                        $db->getConnection()->rollBack();
+                    }
+                    throw $ex;
+                }
                 break;
                 
             case 'toggle_completada':
@@ -546,7 +591,7 @@ include 'includes/header.php';
                 
                 <div class="modal-body">
                     <div class="mb-3" id="cuentaGroup">
-                        <label for="cuenta_id" class="form-label">Cuenta de origen</label>
+                        <label for="cuenta_id" class="form-label">Cuenta</label>
                         <select class="form-select" id="cuenta_id" name="cuenta_id">
                             <option value="">Seleccionar cuenta</option>
                             <?php foreach ($cuentas_usuario as $c): ?>
@@ -612,14 +657,9 @@ function gestionarDinero(id, accion) {
     // Mostrar selección de cuenta solo para agregar (abono)
     const cuentaGroup = document.getElementById('cuentaGroup');
     const cuentaSelect = document.getElementById('cuenta_id');
-    if (accion === 'agregar') {
-        cuentaGroup.style.display = '';
-        cuentaSelect.required = true;
-    } else {
-        cuentaGroup.style.display = 'none';
-        cuentaSelect.required = false;
-        cuentaSelect.value = '';
-    }
+    // Mostrar selección de cuenta tanto para agregar como retirar
+    cuentaGroup.style.display = '';
+    cuentaSelect.required = true;
     
     new bootstrap.Modal(document.getElementById('gestionarDineroModal')).show();
 }

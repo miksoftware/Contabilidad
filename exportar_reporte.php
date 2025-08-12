@@ -16,6 +16,7 @@ $categoria = $_GET['categoria'] ?? '';
 $cuenta = $_GET['cuenta'] ?? '';
 $usuario = $_GET['usuario'] ?? '';
 $formato = $_GET['format'] ?? 'excel';
+$isAdmin = isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin';
 
 // Construir query con filtros
 $whereConditions = ["DATE(t.fecha) BETWEEN ? AND ?"];
@@ -31,9 +32,16 @@ if ($cuenta) {
     $params[] = $cuenta;
 }
 
-if ($usuario) {
+// Filtro de usuario solo permitido para administradores
+if ($isAdmin && $usuario) {
     $whereConditions[] = "t.usuario_id = ?";
     $params[] = $usuario;
+}
+
+// Aislamiento por usuario para no-admins
+if (!$isAdmin) {
+    $whereConditions[] = "t.usuario_id = ?";
+    $params[] = $_SESSION['user_id'];
 }
 
 $whereClause = implode(' AND ', $whereConditions);

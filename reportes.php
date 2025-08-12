@@ -17,11 +17,25 @@ $fechaFin = $_GET['fecha_fin'] ?? date('Y-m-t');
 $categoria = $_GET['categoria'] ?? '';
 $cuenta = $_GET['cuenta'] ?? '';
 $usuario = $_GET['usuario'] ?? '';
+$isAdmin = isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin';
 
 // Obtener listas para filtros
 $categorias = $db->fetchAll("SELECT * FROM categorias ORDER BY nombre");
-$cuentas = $db->fetchAll("SELECT * FROM cuentas WHERE activa = 1 ORDER BY nombre");
-$usuarios = $db->fetchAll("SELECT * FROM usuarios WHERE activo = 1 ORDER BY nombre");
+if ($isAdmin) {
+    $cuentas = $db->fetchAll("SELECT * FROM cuentas WHERE activa = 1 ORDER BY nombre");
+    $usuarios = $db->fetchAll("SELECT * FROM usuarios WHERE activo = 1 ORDER BY nombre");
+} else {
+    // Solo cuentas propias o compartidas para no-admins
+    $cuentas = $db->fetchAll(
+        "SELECT * FROM cuentas WHERE activa = 1 AND (usuario_id = ? OR usuario_id IS NULL) ORDER BY nombre",
+        [$_SESSION['user_id']]
+    );
+    // Lista de usuarios no se muestra para no-admins, pero dejamos el propio por consistencia si se necesitara
+    $usuarios = $db->fetchAll(
+        "SELECT id, nombre FROM usuarios WHERE id = ?",
+        [$_SESSION['user_id']]
+    );
+}
 
 // Construir query de transacciones con filtros
 $whereConditions = ["DATE(t.fecha) BETWEEN ? AND ?"];
@@ -37,9 +51,16 @@ if ($cuenta) {
     $params[] = $cuenta;
 }
 
-if ($usuario) {
+// Filtro de usuario solo permitido para administradores
+if ($isAdmin && $usuario) {
     $whereConditions[] = "t.usuario_id = ?";
     $params[] = $usuario;
+}
+
+// Aislamiento por usuario para no-admins
+if (!$isAdmin) {
+    $whereConditions[] = "t.usuario_id = ?";
+    $params[] = $_SESSION['user_id'];
 }
 
 $whereClause = implode(' AND ', $whereConditions);
@@ -103,6 +124,27 @@ $transaccionesPorMes = $db->fetchAll(
      ORDER BY mes",
     $params
 );
+
+// Contexto del usuario seleccionado para análisis
+$usuarioSeleccionadoId = null;
+$usuarioSeleccionadoNombre = null;
+$saldoCuentasUsuario = null;
+if ($isAdmin && $usuario) {
+    $usuarioSeleccionadoId = intval($usuario);
+} elseif (!$isAdmin) {
+    $usuarioSeleccionadoId = intval($_SESSION['user_id']);
+}
+
+if ($usuarioSeleccionadoId) {
+    $usrRow = $db->fetch("SELECT id, nombre FROM usuarios WHERE id = ?", [$usuarioSeleccionadoId]);
+    $usuarioSeleccionadoNombre = $usrRow ? $usrRow['nombre'] : null;
+    // Saldo actual (cuentas activas del usuario y compartidas)
+    $saldoRow = $db->fetch(
+        "SELECT COALESCE(SUM(saldo_actual),0) AS total FROM cuentas WHERE activa = 1 AND (usuario_id = ? OR usuario_id IS NULL)",
+        [$usuarioSeleccionadoId]
+    );
+    $saldoCuentasUsuario = $saldoRow ? $saldoRow['total'] : 0;
+}
 
 require_once 'includes/header.php';
 ?>
@@ -221,6 +263,7 @@ require_once 'includes/header.php';
                                 <?php endforeach; ?>
                             </select>
                         </div>
+                        <?php if ($isAdmin): ?>
                         <div class="col-md-2">
                             <label for="usuario" class="form-label">Usuario</label>
                             <select class="form-select" id="usuario" name="usuario">
@@ -232,6 +275,7 @@ require_once 'includes/header.php';
                                 <?php endforeach; ?>
                             </select>
                         </div>
+                        <?php endif; ?>
                         <div class="col-12">
                             <button type="submit" class="btn btn-primary">
                                 <i class="fas fa-search me-2"></i>Filtrar
@@ -299,6 +343,19 @@ require_once 'includes/header.php';
                 <div class="col-md-6">
                     <div class="card">
                         <div class="card-header">
+                            <h5 class="mb-0">Ingresos por Categoría</h5>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="ingresosChart" width="400" height="300"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
                             <h5 class="mb-0">Evolución Mensual</h5>
                         </div>
                         <div class="card-body">
@@ -307,6 +364,101 @@ require_once 'includes/header.php';
                     </div>
                 </div>
             </div>
+
+            <?php if ($usuarioSeleccionadoId): ?>
+            <!-- Análisis por Usuario -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-user me-2"></i>
+                        Análisis por Usuario: <?php echo htmlspecialchars($usuarioSeleccionadoNombre ?? ''); ?>
+                    </h5>
+                    <span class="badge bg-secondary">
+                        Período: <?php echo date('d/m/Y', strtotime($fechaInicio)); ?> - <?php echo date('d/m/Y', strtotime($fechaFin)); ?>
+                    </span>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <div class="p-3 border rounded text-center">
+                                <div class="text-muted small">Total Ingresos</div>
+                                <div class="h4 text-success mb-0">$<?php echo number_format($resumen['total_ingresos'] ?? 0, 2); ?></div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 border rounded text-center">
+                                <div class="text-muted small">Total Gastos</div>
+                                <div class="h4 text-danger mb-0">$<?php echo number_format($resumen['total_gastos'] ?? 0, 2); ?></div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 border rounded text-center">
+                                <div class="text-muted small">Balance</div>
+                                <?php $bal = ($resumen['total_ingresos'] ?? 0) - ($resumen['total_gastos'] ?? 0); ?>
+                                <div class="h4 <?php echo $bal >= 0 ? 'text-success' : 'text-danger'; ?> mb-0">$<?php echo number_format($bal, 2); ?></div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 border rounded text-center">
+                                <div class="text-muted small">Saldo Cuentas (actual)</div>
+                                <div class="h4 mb-0">$<?php echo number_format($saldoCuentasUsuario ?? 0, 2); ?></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="mb-2">Top Gastos por Categoría</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Categoría</th>
+                                            <th class="text-end">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($gastosPorCategoria as $row): ?>
+                                        <tr>
+                                            <td><?php echo htmlspecialchars($row['nombre']); ?></td>
+                                            <td class="text-end">$<?php echo number_format($row['total'], 2); ?></td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                        <?php if (empty($gastosPorCategoria)): ?>
+                                        <tr><td colspan="2" class="text-muted">Sin datos</td></tr>
+                                        <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="mb-2">Top Ingresos por Categoría</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Categoría</th>
+                                            <th class="text-end">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($ingresosPorCategoria as $row): ?>
+                                        <tr>
+                                            <td><?php echo htmlspecialchars($row['nombre']); ?></td>
+                                            <td class="text-end">$<?php echo number_format($row['total'], 2); ?></td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                        <?php if (empty($ingresosPorCategoria)): ?>
+                                        <tr><td colspan="2" class="text-muted">Sin datos</td></tr>
+                                        <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <!-- Tabla de transacciones -->
             <div class="card">
@@ -367,6 +519,30 @@ const gastosChart = new Chart(gastosCtx, {
         datasets: [{
             data: <?php echo json_encode(array_column($gastosPorCategoria, 'total')); ?>,
             backgroundColor: <?php echo json_encode(array_column($gastosPorCategoria, 'color')); ?>,
+            borderWidth: 2,
+            borderColor: '#fff'
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
+    }
+});
+
+// Gráfico de ingresos por categoría
+const ingresosCtx = document.getElementById('ingresosChart').getContext('2d');
+const ingresosChart = new Chart(ingresosCtx, {
+    type: 'doughnut',
+    data: {
+        labels: <?php echo json_encode(array_column($ingresosPorCategoria, 'nombre')); ?>,
+        datasets: [{
+            data: <?php echo json_encode(array_column($ingresosPorCategoria, 'total')); ?>,
+            backgroundColor: <?php echo json_encode(array_column($ingresosPorCategoria, 'color')); ?>,
             borderWidth: 2,
             borderColor: '#fff'
         }]

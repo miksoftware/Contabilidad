@@ -7,43 +7,40 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 require_once 'config/database.php';
-
-// Debug inicial
-$debug_info = [];
+// Soporte de edición
+$isAdmin = isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin';
+$editId = isset($_GET['id']) ? intval($_GET['id']) : 0;
+$transaccion = null;
 
 try {
-    // Obtener categorías y cuentas activas
-    $categorias = $db->fetchAll(
-        "SELECT * FROM categorias WHERE activa = 1 ORDER BY tipo, nombre"
-    );
-    $debug_info[] = "Categorías obtenidas: " . count($categorias);
-    
-    $cuentas = $db->fetchAll(
-        "SELECT * FROM cuentas WHERE activa = 1 ORDER BY nombre"
-    );
-    $debug_info[] = "Cuentas obtenidas: " . count($cuentas);
-    
+    if ($editId > 0) {
+        // Cargar transacción para edición
+        $transaccion = $db->fetch(
+            "SELECT * FROM transacciones WHERE id = ?",
+            [$editId]
+        );
+        if (!$transaccion) {
+            throw new Exception('Transacción no encontrada');
+        }
+        if (!$isAdmin && intval($transaccion['usuario_id']) !== intval($_SESSION['user_id'])) {
+            throw new Exception('No autorizado para editar esta transacción');
+        }
+    }
+
+    // Listas
+    $categorias = $db->fetchAll("SELECT * FROM categorias WHERE activa = 1 ORDER BY tipo, nombre");
+    if ($isAdmin) {
+        $cuentas = $db->fetchAll("SELECT * FROM cuentas WHERE activa = 1 ORDER BY nombre");
+    } else {
+        $cuentas = $db->fetchAll(
+            "SELECT * FROM cuentas WHERE activa = 1 AND (usuario_id = ? OR usuario_id IS NULL) ORDER BY nombre",
+            [$_SESSION['user_id']]
+        );
+    }
 } catch (Exception $e) {
-    $debug_info[] = "Error en consulta: " . $e->getMessage();
-    $categorias = [];
-    $cuentas = [];
-}
-
-// Mostrar información de debug
-echo "<div class='alert alert-info mb-3'>";
-echo "<strong>Debug Info:</strong><br>";
-foreach ($debug_info as $info) {
-    echo "• " . $info . "<br>";
-}
-echo "</div>";
-
-// Advertencias si no hay datos
-if (empty($categorias)) {
-    echo "<div class='alert alert-warning'>⚠ No hay categorías disponibles. <a href='categorias.php' target='_blank' class='btn btn-sm btn-primary'>Crear categorías</a></div>";
-}
-
-if (empty($cuentas)) {
-    echo "<div class='alert alert-warning'>⚠ No hay cuentas disponibles. <a href='cuentas.php' target='_blank' class='btn btn-sm btn-primary'>Crear cuentas</a></div>";
+    echo "<div class='alert alert-danger'>" . htmlspecialchars($e->getMessage()) . "</div>";
+    $categorias = $categorias ?? [];
+    $cuentas = $cuentas ?? [];
 }
 ?>
 
@@ -52,8 +49,8 @@ if (empty($cuentas)) {
         <label for="tipo" class="form-label">Tipo de Transacción</label>
         <select class="form-select" id="tipo" name="tipo" required onchange="filtrarCategorias()">
             <option value="">Seleccionar tipo</option>
-            <option value="ingreso">Ingreso</option>
-            <option value="gasto">Gasto</option>
+            <option value="ingreso" <?php echo ($transaccion && $transaccion['tipo'] === 'ingreso') ? 'selected' : ''; ?>>Ingreso</option>
+            <option value="gasto" <?php echo ($transaccion && $transaccion['tipo'] === 'gasto') ? 'selected' : ''; ?>>Gasto</option>
         </select>
     </div>
     <div class="col-md-6">
@@ -61,7 +58,7 @@ if (empty($cuentas)) {
         <div class="input-group">
             <span class="input-group-text">$</span>
             <input type="number" class="form-control" id="cantidad" name="cantidad" 
-                   step="0.01" min="0.01" required placeholder="0.00">
+                   step="0.01" min="0.01" required placeholder="0.00" value="<?php echo $transaccion ? htmlspecialchars($transaccion['cantidad']) : ''; ?>">
         </div>
     </div>
 </div>
@@ -72,13 +69,14 @@ if (empty($cuentas)) {
             Categoría 
             <small class="text-muted">(<?php echo count($categorias); ?> disponibles)</small>
         </label>
-        <select class="form-select" id="categoria_id" name="categoria_id" required>
+    <select class="form-select" id="categoria_id" name="categoria_id" required>
             <option value="">Seleccionar categoría</option>
             <?php if (!empty($categorias)): ?>
                 <?php foreach ($categorias as $categoria): ?>
-                    <option value="<?php echo $categoria['id']; ?>" 
+            <option value="<?php echo $categoria['id']; ?>" 
                             data-tipo="<?php echo $categoria['tipo']; ?>"
-                            style="color: <?php echo $categoria['tipo'] === 'ingreso' ? 'green' : 'red'; ?>;">
+                style="color: <?php echo $categoria['tipo'] === 'ingreso' ? 'green' : 'red'; ?>;"
+                <?php echo ($transaccion && intval($transaccion['categoria_id']) === intval($categoria['id'])) ? 'selected' : ''; ?>>
                         <?php echo htmlspecialchars($categoria['nombre']); ?> (<?php echo ucfirst($categoria['tipo']); ?>)
                     </option>
                 <?php endforeach; ?>
@@ -97,11 +95,11 @@ if (empty($cuentas)) {
             Cuenta 
             <small class="text-muted">(<?php echo count($cuentas); ?> disponibles)</small>
         </label>
-        <select class="form-select" id="cuenta_id" name="cuenta_id" required>
+    <select class="form-select" id="cuenta_id" name="cuenta_id" required>
             <option value="">Seleccionar cuenta</option>
             <?php if (!empty($cuentas)): ?>
                 <?php foreach ($cuentas as $cuenta): ?>
-                    <option value="<?php echo $cuenta['id']; ?>">
+            <option value="<?php echo $cuenta['id']; ?>" <?php echo ($transaccion && intval($transaccion['cuenta_id']) === intval($cuenta['id'])) ? 'selected' : ''; ?>>
                         <?php echo htmlspecialchars($cuenta['nombre']); ?> 
                         (Saldo: $<?php echo number_format($cuenta['saldo_actual'], 2); ?>)
                     </option>
@@ -121,15 +119,21 @@ if (empty($cuentas)) {
 <div class="row mt-3">
     <div class="col-md-6">
         <label for="fecha" class="form-label">Fecha</label>
-        <input type="date" class="form-control" id="fecha" name="fecha" 
-               value="<?php echo date('Y-m-d'); ?>" required>
+     <input type="date" class="form-control" id="fecha" name="fecha" 
+         value="<?php echo $transaccion ? htmlspecialchars(date('Y-m-d', strtotime($transaccion['fecha']))) : date('Y-m-d'); ?>" required>
     </div>
     <div class="col-md-6">
         <label for="descripcion" class="form-label">Descripción</label>
-        <input type="text" class="form-control" id="descripcion" name="descripcion" 
-               placeholder="Descripción de la transacción" required>
+     <input type="text" class="form-control" id="descripcion" name="descripcion" 
+         placeholder="Descripción de la transacción" required value="<?php echo $transaccion ? htmlspecialchars($transaccion['descripcion']) : ''; ?>">
     </div>
 </div>
+
+<!-- hidden fields for action -->
+<input type="hidden" name="accion" value="<?php echo $transaccion ? 'editar' : 'crear'; ?>">
+<?php if ($transaccion): ?>
+    <input type="hidden" name="id" value="<?php echo intval($transaccion['id']); ?>">
+<?php endif; ?>
 
 <script>
 function filtrarCategorias() {
@@ -224,5 +228,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log(`  ${index}: "${opcion.textContent}" (valor: ${opcion.value})`);
         });
     }
+    // Si hay tipo preseleccionado (edición), filtrar categorías inicialmente
+    filtrarCategorias();
 });
 </script>

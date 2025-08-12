@@ -83,7 +83,14 @@ $totalPages = ceil($totalTransacciones / $limit);
 
 // Obtener datos para filtros
 $categorias = $db->fetchAll("SELECT * FROM categorias WHERE activa = 1 ORDER BY tipo, nombre");
-$cuentas = $db->fetchAll("SELECT * FROM cuentas WHERE activa = 1 ORDER BY nombre");
+if ($_SESSION['user_role'] === 'admin') {
+    $cuentas = $db->fetchAll("SELECT * FROM cuentas WHERE activa = 1 ORDER BY nombre");
+} else {
+    $cuentas = $db->fetchAll(
+        "SELECT * FROM cuentas WHERE activa = 1 AND (usuario_id = ? OR usuario_id IS NULL) ORDER BY nombre",
+        [$_SESSION['user_id']]
+    );
+}
 
 // Estadísticas del período filtrado
 $stats = $db->fetch(
@@ -420,8 +427,10 @@ include 'includes/header.php';
 
 <script>
 // Cargar formulario de transacción
-document.getElementById('nuevaTransaccionModal').addEventListener('show.bs.modal', function () {
-    fetch('formulario_transaccion.php')
+document.getElementById('nuevaTransaccionModal').addEventListener('show.bs.modal', function (e) {
+    const editId = e.target.getAttribute('data-edit-id') || '';
+    const url = editId ? ('formulario_transaccion.php?id=' + encodeURIComponent(editId)) : 'formulario_transaccion.php';
+    fetch(url)
         .then(response => response.text())
         .then(html => {
             document.getElementById('modalContent').innerHTML = `
@@ -430,7 +439,7 @@ document.getElementById('nuevaTransaccionModal').addEventListener('show.bs.modal
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                         <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save me-2"></i>Guardar Transacción
+                            <i class="fas fa-save me-2"></i>Guardar
                         </button>
                     </div>
                 </form>
@@ -473,15 +482,30 @@ function limpiarFiltros() {
 }
 
 function editarTransaccion(id) {
-    // Implementar edición de transacción
-    alert('Función de edición en desarrollo');
+    const modalEl = document.getElementById('nuevaTransaccionModal');
+    modalEl.setAttribute('data-edit-id', id);
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
 }
 
 function eliminarTransaccion(id) {
-    if (confirm('¿Estás seguro de que deseas eliminar esta transacción?')) {
-        // Implementar eliminación
-        alert('Función de eliminación en desarrollo');
-    }
+    if (!confirm('¿Estás seguro de que deseas eliminar esta transacción?')) return;
+    // Construir y enviar un formulario POST oculto
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'procesar_transaccion.php';
+    const accion = document.createElement('input');
+    accion.type = 'hidden';
+    accion.name = 'accion';
+    accion.value = 'eliminar';
+    const idInput = document.createElement('input');
+    idInput.type = 'hidden';
+    idInput.name = 'id';
+    idInput.value = String(id);
+    form.appendChild(accion);
+    form.appendChild(idInput);
+    document.body.appendChild(form);
+    form.submit();
 }
 
 function exportarTransacciones() {
