@@ -109,7 +109,7 @@ $categoriasIngreso = $db->fetchAll(
     "SELECT id, nombre, color, icono FROM categorias WHERE tipo = 'ingreso' AND activa = 1 ORDER BY nombre"
 );
 
-// Obtener transferencias recientes
+// Obtener transferencias recientes solo donde el usuario actual participó (como origen o destino)
 $transferenciasRecientes = $db->fetchAll(
     "SELECT 
         t1.fecha, t1.cantidad, t1.descripcion, t1.created_at,
@@ -132,8 +132,10 @@ $transferenciasRecientes = $db->fetchAll(
      JOIN cuentas c2 ON t2.cuenta_id = c2.id
      JOIN categorias cat1 ON t1.categoria_id = cat1.id
      JOIN categorias cat2 ON t2.categoria_id = cat2.id
+     WHERE t1.usuario_id = ? OR t2.usuario_id = ?
      ORDER BY t1.created_at DESC
-     LIMIT 20"
+     LIMIT 20",
+    [$_SESSION['user_id'], $_SESSION['user_id']]
 );
 
 $titulo = 'Transferencias entre Usuarios - Contabilidad Familiar';
@@ -190,11 +192,6 @@ include 'includes/header.php';
                     <li class="nav-item">
                         <a class="nav-link" href="usuarios.php">
                             <i class="fas fa-users me-2"></i>Usuarios
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="diagnostico.php">
-                            <i class="fas fa-stethoscope me-2"></i>Diagnóstico
                         </a>
                     </li>
                     <?php endif; ?>

@@ -25,20 +25,12 @@ $añoActual = date('Y');
 $isAdmin = isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin';
 
 try {
-    // Ingresos del mes
-    if ($isAdmin) {
-        $ingresosMes = $db->fetch(
-            "SELECT COALESCE(SUM(cantidad), 0) as total FROM transacciones 
-             WHERE tipo = 'ingreso' AND DATE_FORMAT(fecha, '%Y-%m') = ?",
-            [$mesActual]
-        );
-    } else {
-        $ingresosMes = $db->fetch(
-            "SELECT COALESCE(SUM(cantidad), 0) as total FROM transacciones 
-             WHERE tipo = 'ingreso' AND DATE_FORMAT(fecha, '%Y-%m') = ? AND usuario_id = ?",
-            [$mesActual, $_SESSION['user_id']]
-        );
-    }
+    // Ingresos del mes - solo del usuario actual
+    $ingresosMes = $db->fetch(
+        "SELECT COALESCE(SUM(cantidad), 0) as total FROM transacciones 
+         WHERE tipo = 'ingreso' AND DATE_FORMAT(fecha, '%Y-%m') = ? AND usuario_id = ?",
+        [$mesActual, $_SESSION['user_id']]
+    );
     $ingresosMes = $ingresosMes ? $ingresosMes['total'] : 0;
 } catch (Exception $e) {
     error_log("Error consultando ingresos: " . $e->getMessage());
@@ -46,20 +38,12 @@ try {
 }
 
 try {
-    // Gastos del mes
-    if ($isAdmin) {
-        $gastosMes = $db->fetch(
-            "SELECT COALESCE(SUM(cantidad), 0) as total FROM transacciones 
-             WHERE tipo = 'gasto' AND DATE_FORMAT(fecha, '%Y-%m') = ?",
-            [$mesActual]
-        );
-    } else {
-        $gastosMes = $db->fetch(
-            "SELECT COALESCE(SUM(cantidad), 0) as total FROM transacciones 
-             WHERE tipo = 'gasto' AND DATE_FORMAT(fecha, '%Y-%m') = ? AND usuario_id = ?",
-            [$mesActual, $_SESSION['user_id']]
-        );
-    }
+    // Gastos del mes - solo del usuario actual
+    $gastosMes = $db->fetch(
+        "SELECT COALESCE(SUM(cantidad), 0) as total FROM transacciones 
+         WHERE tipo = 'gasto' AND DATE_FORMAT(fecha, '%Y-%m') = ? AND usuario_id = ?",
+        [$mesActual, $_SESSION['user_id']]
+    );
     $gastosMes = $gastosMes ? $gastosMes['total'] : 0;
 } catch (Exception $e) {
     error_log("Error consultando gastos: " . $e->getMessage());
@@ -70,17 +54,11 @@ try {
 $balanceMes = $ingresosMes - $gastosMes;
 
 try {
-    // Saldo total de todas las cuentas
-    if ($isAdmin) {
-        $saldoTotal = $db->fetch(
-            "SELECT COALESCE(SUM(saldo_actual), 0) as total FROM cuentas WHERE activa = 1"
-        );
-    } else {
-        $saldoTotal = $db->fetch(
-            "SELECT COALESCE(SUM(saldo_actual), 0) as total FROM cuentas WHERE activa = 1 AND (usuario_id = ? OR usuario_id IS NULL)",
-            [$_SESSION['user_id']]
-        );
-    }
+    // Saldo total - solo cuentas del usuario actual y compartidas
+    $saldoTotal = $db->fetch(
+        "SELECT COALESCE(SUM(saldo_actual), 0) as total FROM cuentas WHERE activa = 1 AND (usuario_id = ? OR usuario_id IS NULL)",
+        [$_SESSION['user_id']]
+    );
     $saldoTotal = $saldoTotal ? $saldoTotal['total'] : 0;
 } catch (Exception $e) {
     error_log("Error consultando saldo total: " . $e->getMessage());
@@ -88,30 +66,18 @@ try {
 }
 
 try {
-    // Últimas transacciones
-    if ($isAdmin) {
-        $ultimasTransacciones = $db->fetchAll(
-            "SELECT t.*, c.nombre as categoria, cu.nombre as cuenta, u.nombre as usuario
-             FROM transacciones t
-             JOIN categorias c ON t.categoria_id = c.id
-             JOIN cuentas cu ON t.cuenta_id = cu.id
-             JOIN usuarios u ON t.usuario_id = u.id
-             ORDER BY t.created_at DESC
-             LIMIT 10"
-        );
-    } else {
-        $ultimasTransacciones = $db->fetchAll(
-            "SELECT t.*, c.nombre as categoria, cu.nombre as cuenta, u.nombre as usuario
-             FROM transacciones t
-             JOIN categorias c ON t.categoria_id = c.id
-             JOIN cuentas cu ON t.cuenta_id = cu.id
-             JOIN usuarios u ON t.usuario_id = u.id
-             WHERE t.usuario_id = ?
-             ORDER BY t.created_at DESC
-             LIMIT 10",
-            [$_SESSION['user_id']]
-        );
-    }
+    // Últimas transacciones - solo del usuario actual
+    $ultimasTransacciones = $db->fetchAll(
+        "SELECT t.*, c.nombre as categoria, cu.nombre as cuenta, u.nombre as usuario
+         FROM transacciones t
+         JOIN categorias c ON t.categoria_id = c.id
+         JOIN cuentas cu ON t.cuenta_id = cu.id
+         JOIN usuarios u ON t.usuario_id = u.id
+         WHERE t.usuario_id = ?
+         ORDER BY t.created_at DESC
+         LIMIT 10",
+        [$_SESSION['user_id']]
+    );
     if (!$ultimasTransacciones) {
         $ultimasTransacciones = [];
     }
@@ -121,35 +87,20 @@ try {
 }
 
 try {
-    // Gastos por categoría (mes actual)
-    if ($isAdmin) {
-        $gastosPorCategoria = $db->fetchAll(
-            "SELECT c.nombre, c.color, COALESCE(SUM(t.cantidad), 0) as total
-             FROM categorias c
-             LEFT JOIN transacciones t ON c.id = t.categoria_id 
-                 AND t.tipo = 'gasto' 
-                 AND DATE_FORMAT(t.fecha, '%Y-%m') = ?
-             WHERE c.tipo = 'gasto' AND c.activa = 1
-             GROUP BY c.id, c.nombre, c.color
-             HAVING total > 0
-             ORDER BY total DESC",
-            [$mesActual]
-        );
-    } else {
-        $gastosPorCategoria = $db->fetchAll(
-            "SELECT c.nombre, c.color, COALESCE(SUM(t.cantidad), 0) as total
-             FROM categorias c
-             LEFT JOIN transacciones t ON c.id = t.categoria_id 
-                 AND t.tipo = 'gasto' 
-                 AND DATE_FORMAT(t.fecha, '%Y-%m') = ?
-                 AND t.usuario_id = ?
-             WHERE c.tipo = 'gasto' AND c.activa = 1
-             GROUP BY c.id, c.nombre, c.color
-             HAVING total > 0
-             ORDER BY total DESC",
-            [$mesActual, $_SESSION['user_id']]
-        );
-    }
+    // Gastos por categoría (mes actual) - solo del usuario actual
+    $gastosPorCategoria = $db->fetchAll(
+        "SELECT c.nombre, c.color, COALESCE(SUM(t.cantidad), 0) as total
+         FROM categorias c
+         LEFT JOIN transacciones t ON c.id = t.categoria_id 
+             AND t.tipo = 'gasto' 
+             AND DATE_FORMAT(t.fecha, '%Y-%m') = ?
+             AND t.usuario_id = ?
+         WHERE c.tipo = 'gasto' AND c.activa = 1
+         GROUP BY c.id, c.nombre, c.color
+         HAVING total > 0
+         ORDER BY total DESC",
+        [$mesActual, $_SESSION['user_id']]
+    );
     if (!$gastosPorCategoria) {
         $gastosPorCategoria = [];
     }
@@ -159,27 +110,16 @@ try {
 }
 
 try {
-    // Metas de ahorro
-    if ($isAdmin) {
-        $metasAhorro = $db->fetchAll(
-            "SELECT *, 
-             ROUND((cantidad_actual / cantidad_objetivo) * 100, 2) as progreso
-             FROM metas_ahorro 
-             WHERE completada = 0
-             ORDER BY fecha_objetivo ASC
-             LIMIT 5"
-        );
-    } else {
-        $metasAhorro = $db->fetchAll(
-            "SELECT *, 
-             ROUND((cantidad_actual / cantidad_objetivo) * 100, 2) as progreso
-             FROM metas_ahorro 
-             WHERE completada = 0 AND usuario_id = ?
-             ORDER BY fecha_objetivo ASC
-             LIMIT 5",
-            [$_SESSION['user_id']]
-        );
-    }
+    // Metas de ahorro - solo del usuario actual (incluso para admin)
+    $metasAhorro = $db->fetchAll(
+        "SELECT *, 
+         ROUND((cantidad_actual / cantidad_objetivo) * 100, 2) as progreso
+         FROM metas_ahorro 
+         WHERE completada = 0 AND usuario_id = ?
+         ORDER BY fecha_objetivo ASC
+         LIMIT 5",
+        [$_SESSION['user_id']]
+    );
     if (!$metasAhorro) {
         $metasAhorro = [];
     }

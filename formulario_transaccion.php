@@ -29,14 +29,11 @@ try {
 
     // Listas
     $categorias = $db->fetchAll("SELECT * FROM categorias WHERE activa = 1 ORDER BY tipo, nombre");
-    if ($isAdmin) {
-        $cuentas = $db->fetchAll("SELECT * FROM cuentas WHERE activa = 1 ORDER BY nombre");
-    } else {
-        $cuentas = $db->fetchAll(
-            "SELECT * FROM cuentas WHERE activa = 1 AND (usuario_id = ? OR usuario_id IS NULL) ORDER BY nombre",
-            [$_SESSION['user_id']]
-        );
-    }
+    // Solo cuentas del usuario actual (sin diferencia entre admin y usuario regular)
+    $cuentas = $db->fetchAll(
+        "SELECT * FROM cuentas WHERE activa = 1 AND usuario_id = ? ORDER BY nombre",
+        [$_SESSION['user_id']]
+    );
 } catch (Exception $e) {
     echo "<div class='alert alert-danger'>" . htmlspecialchars($e->getMessage()) . "</div>";
     $categorias = $categorias ?? [];

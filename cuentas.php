@@ -46,20 +46,13 @@ if ($_POST) {
                     throw new Exception('Nombre y tipo son obligatorios');
                 }
                 
-                if ($isAdmin) {
-                    $db->query(
-                        "UPDATE cuentas SET nombre = ?, tipo = ?, color = ? WHERE id = ?",
-                        [$nombre, $tipo, $color, $id]
-                    );
-                } else {
-                    // Solo permitir editar cuentas propias
-                    $stmt = $db->query(
-                        "UPDATE cuentas SET nombre = ?, tipo = ?, color = ? WHERE id = ? AND usuario_id = ?",
-                        [$nombre, $tipo, $color, $id, $_SESSION['user_id']]
-                    );
-                    if ($stmt->rowCount() === 0) {
-                        throw new Exception('No autorizado para editar esta cuenta');
-                    }
+                // Solo permitir editar cuentas propias (para todos los usuarios)
+                $stmt = $db->query(
+                    "UPDATE cuentas SET nombre = ?, tipo = ?, color = ? WHERE id = ? AND usuario_id = ?",
+                    [$nombre, $tipo, $color, $id, $_SESSION['user_id']]
+                );
+                if ($stmt->rowCount() === 0) {
+                    throw new Exception('No autorizado para editar esta cuenta');
                 }
                 
                 $mensaje = 'Cuenta actualizada exitosamente';
@@ -67,12 +60,10 @@ if ($_POST) {
                 
             case 'eliminar':
                 $id = intval($_POST['id']);
-                // Verificar propiedad si no es admin
-                if (!$isAdmin) {
-                    $prop = $db->fetch("SELECT usuario_id FROM cuentas WHERE id = ?", [$id]);
-                    if (!$prop || intval($prop['usuario_id']) !== intval($_SESSION['user_id'])) {
-                        throw new Exception('No autorizado para eliminar esta cuenta');
-                    }
+                // Verificar propiedad (para todos los usuarios)
+                $prop = $db->fetch("SELECT usuario_id FROM cuentas WHERE id = ?", [$id]);
+                if (!$prop || intval($prop['usuario_id']) !== intval($_SESSION['user_id'])) {
+                    throw new Exception('No autorizado para eliminar esta cuenta');
                 }
 
                 // Verificar si tiene transacciones
@@ -84,21 +75,13 @@ if ($_POST) {
                     throw new Exception('No se puede eliminar una cuenta con transacciones. Desactívala en su lugar.');
                 }
 
-                if ($isAdmin) {
-                    $db->query("DELETE FROM cuentas WHERE id = ?", [$id]);
-                } else {
-                    $db->query("DELETE FROM cuentas WHERE id = ? AND usuario_id = ?", [$id, $_SESSION['user_id']]);
-                }
+                $db->query("DELETE FROM cuentas WHERE id = ? AND usuario_id = ?", [$id, $_SESSION['user_id']]);
                 $mensaje = 'Cuenta eliminada exitosamente';
                 break;
                 
             case 'toggle_activo':
                 $id = intval($_POST['id']);
-                if ($isAdmin) {
-                    $db->query("UPDATE cuentas SET activa = NOT activa WHERE id = ?", [$id]);
-                } else {
-                    $db->query("UPDATE cuentas SET activa = NOT activa WHERE id = ? AND usuario_id = ?", [$id, $_SESSION['user_id']]);
-                }
+                $db->query("UPDATE cuentas SET activa = NOT activa WHERE id = ? AND usuario_id = ?", [$id, $_SESSION['user_id']]);
                 $mensaje = 'Estado de cuenta actualizado';
                 break;
         }
@@ -108,24 +91,15 @@ if ($_POST) {
     }
 }
 
-// Obtener cuentas (solo propias para no-admins)
-if ($isAdmin) {
-    $cuentas = $db->fetchAll(
-        "SELECT c.*, 
-         (SELECT COUNT(*) FROM transacciones WHERE cuenta_id = c.id) as total_transacciones
-         FROM cuentas c 
-         ORDER BY c.activa DESC, c.nombre"
-    );
-} else {
-    $cuentas = $db->fetchAll(
-        "SELECT c.*, 
-         (SELECT COUNT(*) FROM transacciones WHERE cuenta_id = c.id) as total_transacciones
-         FROM cuentas c 
-         WHERE c.usuario_id = ?
-         ORDER BY c.activa DESC, c.nombre",
-        [$_SESSION['user_id']]
-    );
-}
+// Obtener solo cuentas del usuario actual (para todos los usuarios)
+$cuentas = $db->fetchAll(
+    "SELECT c.*, 
+     (SELECT COUNT(*) FROM transacciones WHERE cuenta_id = c.id) as total_transacciones
+     FROM cuentas c 
+     WHERE c.usuario_id = ?
+     ORDER BY c.activa DESC, c.nombre",
+    [$_SESSION['user_id']]
+);
 
 $titulo = 'Gestión de Cuentas - Contabilidad Familiar';
 include 'includes/header.php';

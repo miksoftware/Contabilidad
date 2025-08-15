@@ -66,7 +66,9 @@ CREATE TABLE metas_ahorro (
     cantidad_actual DECIMAL(12,2) DEFAULT 0.00,
     fecha_objetivo DATE,
     completada BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_id INT NOT NULL,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
 );
 
 -- Tabla de presupuestos (items recurrentes como servicios)
@@ -124,14 +126,14 @@ INSERT INTO categorias (nombre, tipo, color, icono) VALUES
 ('Otros Gastos', 'gasto', '#6c757d', 'fas fa-minus-circle');
 
 -- Insertar cuentas por defecto
-INSERT INTO cuentas (nombre, tipo, saldo_inicial, saldo_actual, color) VALUES 
-('Efectivo', 'efectivo', 0.00, 0.00, '#28a745'),
-('Cuenta Corriente', 'banco', 0.00, 0.00, '#007bff'),
-('Cuenta de Ahorro', 'ahorro', 0.00, 0.00, '#ffc107'),
-('Tarjeta de Crédito', 'tarjeta', 0.00, 0.00, '#dc3545');
+INSERT INTO cuentas (nombre, tipo, saldo_inicial, saldo_actual, color, usuario_id) VALUES 
+('Efectivo', 'efectivo', 0.00, 0.00, '#28a745', 1),
+('Cuenta Corriente', 'banco', 0.00, 0.00, '#007bff', 1),
+('Cuenta de Ahorro', 'ahorro', 0.00, 0.00, '#ffc107', 2),
+('Tarjeta de Crédito', 'tarjeta', 0.00, 0.00, '#dc3545', 2);
 
 -- Insertar algunas metas de ejemplo
-INSERT INTO metas_ahorro (nombre, descripcion, cantidad_objetivo, fecha_objetivo) VALUES 
-('Fondo de Emergencia', 'Ahorro para emergencias equivalente a 6 meses de gastos', 50000.00, '2025-12-31'),
-('Vacaciones 2025', 'Ahorro para las vacaciones familiares de verano', 15000.00, '2025-07-01'),
-('Nuevo Auto', 'Ahorro para la inicial de un auto nuevo', 80000.00, '2026-06-30');
+INSERT INTO metas_ahorro (nombre, descripcion, cantidad_objetivo, fecha_objetivo, usuario_id) VALUES 
+('Fondo de Emergencia', 'Ahorro para emergencias equivalente a 6 meses de gastos', 50000.00, '2025-12-31', 1),
+('Vacaciones 2025', 'Ahorro para las vacaciones familiares de verano', 15000.00, '2025-07-01', 1),
+('Nuevo Auto', 'Ahorro para la inicial de un auto nuevo', 80000.00, '2026-06-30', 2);

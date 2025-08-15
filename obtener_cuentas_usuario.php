@@ -13,9 +13,9 @@ if (!isset($_SESSION['user_id'])) {
 $requested_user_id = isset($_GET['usuario_id']) ? intval($_GET['usuario_id']) : intval($_SESSION['user_id']);
 
 try {
-    // Obtener las cuentas activas del usuario solicitado
+    // Obtener solo las cuentas del usuario solicitado (sin cuentas compartidas)
     $cuentas_result = $db->fetchAll(
-        "SELECT id, nombre, saldo_actual FROM cuentas WHERE activa = 1 AND (usuario_id = ? OR usuario_id IS NULL) ORDER BY nombre ASC",
+        "SELECT id, nombre, saldo_actual FROM cuentas WHERE activa = 1 AND usuario_id = ? ORDER BY nombre ASC",
         [$requested_user_id]
     );
 

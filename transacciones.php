@@ -47,11 +47,9 @@ if ($filtroFechaFin) {
     $params[] = $filtroFechaFin;
 }
 
-// Si no es admin, solo ver sus transacciones
-if ($_SESSION['user_role'] !== 'admin') {
-    $whereConditions[] = "t.usuario_id = ?";
-    $params[] = $_SESSION['user_id'];
-}
+// Mostrar solo transacciones del usuario actual (para todos los usuarios)
+$whereConditions[] = "t.usuario_id = ?";
+$params[] = $_SESSION['user_id'];
 
 $whereClause = !empty($whereConditions) ? "WHERE " . implode(" AND ", $whereConditions) : "";
 
@@ -81,16 +79,12 @@ $totalTransacciones = $db->fetch(
 
 $totalPages = ceil($totalTransacciones / $limit);
 
-// Obtener datos para filtros
+// Obtener datos para filtros - solo cuentas del usuario actual (sin compartidas)
 $categorias = $db->fetchAll("SELECT * FROM categorias WHERE activa = 1 ORDER BY tipo, nombre");
-if ($_SESSION['user_role'] === 'admin') {
-    $cuentas = $db->fetchAll("SELECT * FROM cuentas WHERE activa = 1 ORDER BY nombre");
-} else {
-    $cuentas = $db->fetchAll(
-        "SELECT * FROM cuentas WHERE activa = 1 AND (usuario_id = ? OR usuario_id IS NULL) ORDER BY nombre",
-        [$_SESSION['user_id']]
-    );
-}
+$cuentas = $db->fetchAll(
+    "SELECT * FROM cuentas WHERE activa = 1 AND usuario_id = ? ORDER BY nombre",
+    [$_SESSION['user_id']]
+);
 
 // Estadísticas del período filtrado
 $stats = $db->fetch(
@@ -309,9 +303,6 @@ include 'includes/header.php';
                                         <th>Descripción</th>
                                         <th>Categoría</th>
                                         <th>Cuenta</th>
-                                        <?php if ($_SESSION['user_role'] === 'admin'): ?>
-                                            <th>Usuario</th>
-                                        <?php endif; ?>
                                         <th>Cantidad</th>
                                         <th>Acciones</th>
                                     </tr>
@@ -334,12 +325,6 @@ include 'includes/header.php';
                                                 </span>
                                             </td>
                                             <td><?php echo htmlspecialchars($transaccion['cuenta']); ?></td>
-                                            <?php if ($_SESSION['user_role'] === 'admin'): ?>
-                                                <td>
-                                                    <i class="fas fa-user me-1"></i>
-                                                    <?php echo htmlspecialchars($transaccion['usuario']); ?>
-                                                </td>
-                                            <?php endif; ?>
                                             <td>
                                                 <span class="fw-bold text-<?php echo $transaccion['tipo'] === 'ingreso' ? 'success' : 'danger'; ?>">
                                                     <?php echo $transaccion['tipo'] === 'ingreso' ? '+' : '-'; ?>$<?php echo number_format($transaccion['cantidad'], 2); ?>

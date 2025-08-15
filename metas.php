@@ -28,8 +28,8 @@ if ($_POST) {
                 }
                 
                 $db->query(
-                    "INSERT INTO metas_ahorro (nombre, descripcion, cantidad_objetivo, fecha_objetivo) VALUES (?, ?, ?, ?)",
-                    [$nombre, $descripcion, $cantidad_objetivo, $fecha_objetivo ?: null]
+                    "INSERT INTO metas_ahorro (nombre, descripcion, cantidad_objetivo, fecha_objetivo, usuario_id) VALUES (?, ?, ?, ?, ?)",
+                    [$nombre, $descripcion, $cantidad_objetivo, $fecha_objetivo ?: null, $_SESSION['user_id']]
                 );
                 
                 $mensaje = 'Meta de ahorro creada exitosamente';
@@ -47,8 +47,8 @@ if ($_POST) {
                 }
                 
                 $db->query(
-                    "UPDATE metas_ahorro SET nombre = ?, descripcion = ?, cantidad_objetivo = ?, fecha_objetivo = ? WHERE id = ?",
-                    [$nombre, $descripcion, $cantidad_objetivo, $fecha_objetivo ?: null, $id]
+                    "UPDATE metas_ahorro SET nombre = ?, descripcion = ?, cantidad_objetivo = ?, fecha_objetivo = ? WHERE id = ? AND usuario_id = ?",
+                    [$nombre, $descripcion, $cantidad_objetivo, $fecha_objetivo ?: null, $id, $_SESSION['user_id']]
                 );
                 
                 $mensaje = 'Meta de ahorro actualizada exitosamente';
@@ -66,9 +66,9 @@ if ($_POST) {
                     throw new Exception('Selecciona la cuenta de donde saldrá el dinero');
                 }
 
-                // Validar cuenta pertenece al usuario (o es compartida) y que tenga saldo suficiente
+                // Validar cuenta pertenece al usuario y que tenga saldo suficiente
                 $cuenta = $db->fetch(
-                    "SELECT id, nombre, saldo_actual FROM cuentas WHERE id = ? AND activa = 1 AND (usuario_id = ? OR usuario_id IS NULL)",
+                    "SELECT id, nombre, saldo_actual FROM cuentas WHERE id = ? AND activa = 1 AND usuario_id = ?",
                     [$cuenta_id, $_SESSION['user_id']]
                 );
                 if (!$cuenta) {
@@ -78,10 +78,10 @@ if ($_POST) {
                     throw new Exception('Saldo insuficiente en la cuenta seleccionada');
                 }
 
-                // Obtener meta para descripción y validar existencia
-                $meta = $db->fetch("SELECT * FROM metas_ahorro WHERE id = ?", [$id]);
+                // Obtener meta para descripción y validar existencia y propiedad
+                $meta = $db->fetch("SELECT * FROM metas_ahorro WHERE id = ? AND usuario_id = ?", [$id, $_SESSION['user_id']]);
                 if (!$meta) {
-                    throw new Exception('Meta no encontrada');
+                    throw new Exception('Meta no encontrada o no autorizada');
                 }
 
                 // Buscar categoría "Otros Gastos"; si no existe, tomar la primera de gasto
@@ -145,13 +145,16 @@ if ($_POST) {
                     throw new Exception('Selecciona la cuenta donde se depositará el dinero retirado');
                 }
                 
-                $meta = $db->fetch("SELECT * FROM metas_ahorro WHERE id = ?", [$id]);
+                $meta = $db->fetch("SELECT * FROM metas_ahorro WHERE id = ? AND usuario_id = ?", [$id, $_SESSION['user_id']]);
+                if (!$meta) {
+                    throw new Exception('Meta no encontrada o no autorizada');
+                }
                 if ($cantidad > $meta['cantidad_actual']) {
                     throw new Exception('No puedes retirar más dinero del que tienes ahorrado');
                 }
-                // Validar cuenta destino pertenece al usuario (o compartida)
+                // Validar cuenta destino pertenece al usuario
                 $cuentaDestino = $db->fetch(
-                    "SELECT id, nombre, saldo_actual FROM cuentas WHERE id = ? AND activa = 1 AND (usuario_id = ? OR usuario_id IS NULL)",
+                    "SELECT id, nombre, saldo_actual FROM cuentas WHERE id = ? AND activa = 1 AND usuario_id = ?",
                     [$cuenta_id, $_SESSION['user_id']]
                 );
                 if (!$cuentaDestino) {
@@ -201,13 +204,13 @@ if ($_POST) {
                 
             case 'toggle_completada':
                 $id = intval($_POST['id']);
-                $db->query("UPDATE metas_ahorro SET completada = NOT completada WHERE id = ?", [$id]);
+                $db->query("UPDATE metas_ahorro SET completada = NOT completada WHERE id = ? AND usuario_id = ?", [$id, $_SESSION['user_id']]);
                 $mensaje = 'Estado de meta actualizado';
                 break;
                 
             case 'eliminar':
                 $id = intval($_POST['id']);
-                $db->query("DELETE FROM metas_ahorro WHERE id = ?", [$id]);
+                $db->query("DELETE FROM metas_ahorro WHERE id = ? AND usuario_id = ?", [$id, $_SESSION['user_id']]);
                 $mensaje = 'Meta eliminada exitosamente';
                 break;
         }
@@ -217,21 +220,23 @@ if ($_POST) {
     }
 }
 
-// Obtener todas las metas
+// Obtener solo metas del usuario actual (para todos los usuarios)
 $metas = $db->fetchAll(
     "SELECT *, 
      ROUND((cantidad_actual / cantidad_objetivo) * 100, 2) as progreso,
      DATEDIFF(fecha_objetivo, CURDATE()) as dias_restantes
      FROM metas_ahorro 
-     ORDER BY completada ASC, fecha_objetivo ASC"
+     WHERE usuario_id = ?
+     ORDER BY completada ASC, fecha_objetivo ASC",
+    [$_SESSION['user_id']]
 );
 
 $metasActivas = array_filter($metas, fn($m) => !$m['completada']);
 $metasCompletadas = array_filter($metas, fn($m) => $m['completada']);
 
-// Cuentas del usuario (y compartidas) para fondear metas
+// Cuentas solo del usuario actual para fondear metas
 $cuentas_usuario = $db->fetchAll(
-    "SELECT id, nombre, saldo_actual FROM cuentas WHERE activa = 1 AND (usuario_id = ? OR usuario_id IS NULL) ORDER BY nombre",
+    "SELECT id, nombre, saldo_actual FROM cuentas WHERE activa = 1 AND usuario_id = ? ORDER BY nombre",
     [$_SESSION['user_id']]
 );
 
